@@ -276,6 +276,13 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
         volume = self.db.volume_get(context, volume_id)
         display_name = self._gen_ccding_backup_name(backup_id)
         availability_zone = cfg.CONF.cascaded_available_zone
+
+        '''if volume status is in-use, it must have been checked with force flag
+            in cascading api layer'''
+        force = False
+        if volume['status'] == 'in-use':
+            force = True
+
         LOG.info(_('cascade info: Create backup started, backup: %(backup_id)s '
                    'volume: %(volume_id)s.') %
                  {'backup_id': backup_id, 'volume_id': volume_id})
@@ -331,7 +338,8 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                 volume_id=cascaded_volume_id,
                 container=container,
                 name=display_name,
-                description=display_description)
+                description=display_description,
+                force=force)
             LOG.info(_("cascade ino: create backup while response is:%s"),
                      bodyResponse._info)
             self.volumes_mapping_cache['backups'][backup_id] = \
