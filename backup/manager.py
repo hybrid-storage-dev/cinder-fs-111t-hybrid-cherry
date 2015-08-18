@@ -301,7 +301,7 @@ class BackupManager(manager.SchedulerDependentManager):
                                                    self.az})
         LOG.info(_('Create backup finished. backup: %s.'), backup_id)
 
-    def restore_backup(self, context, backup_id, volume_id):
+    def restore_backup(self, context, backup_id, volume_id, availability_zone=None, description=None):
         """Restore volume backups from configured backup service."""
         LOG.info(_('Restore backup started, backup: %(backup_id)s '
                    'volume: %(volume_id)s.') %

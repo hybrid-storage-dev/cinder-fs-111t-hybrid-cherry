@@ -202,7 +202,7 @@ class API(base.Base):
 
         return backup
 
-    def restore(self, context, backup_id, volume_id=None):
+    def restore(self, context, backup_id, volume_id=None, availability_zone=None, description=None):
         """Make the RPC call to restore a volume backup."""
         check_policy(context, 'restore')
         backup = self.get(context, backup_id)
@@ -263,7 +263,9 @@ class API(base.Base):
         self.backup_rpcapi.restore_backup(context,
                                           volume_host,
                                           backup['id'],
-                                          volume_id)
+                                          volume_id,
+                                          availability_zone,
+                                          description)
 
         d = {'backup_id': backup_id,
              'volume_id': volume_id, }

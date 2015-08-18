@@ -450,6 +450,34 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             cascaded_backup_id = \
                     self.volumes_mapping_cache['backups'].get(backup_id,
                                                                 None)
+            if backup['availability_zone'] != availability_zone:
+                mapping_uuid = backup['service_metadata'].split('/')[0] if backup['service_metadata'] is not None else ''
+                cinderClient = self._get_cinder_cascaded_user_client(context)
+                volume_type_id = volume['volume_type_id']
+                cascaded_volume_type = None
+                if volume_type_id is None:
+                    volume_type_ref = \
+                        self.db.volume_type_get(context, volume_type_id)
+                    cascaded_volume_type = volume_type_ref['name']
+                
+                volumeResponse = cinderClient.volumes.create(
+                        size=volume['size'],     
+                        name=volume['display_name'],
+                        description=volume['display_description'],
+                        volume_type=cascaded_volume_type,
+                        user_id=context.user_id,
+                        project_id=context.project_id,
+                        availability_zone=availability_zone,
+                        metadata={"volume_recovery":None})
+                time.sleep(30)
+                display_description="disasterRecovery@"+mapping_uuid
+                bodyResponse = cinderClient.backups.create(
+                volume_id=volumeResponse._info['id'],
+                container=backup['container'],
+                name=backup['display_name'],
+                description=display_description)
+                
+                
             bodyResponse = cinderClient.restores.restore(
                 backup_id=cascaded_backup_id,
                 volume_id=cascaded_volume_id)

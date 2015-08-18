@@ -51,11 +51,13 @@ class BackupAPI(object):
         cctxt = self.client.prepare(server=host)
         cctxt.cast(ctxt, 'create_backup', backup_id=backup_id)
 
-    def restore_backup(self, ctxt, host, backup_id, volume_id):
+    def restore_backup(self, ctxt, host, backup_id, volume_id, availavility_zone=None, dispcription=None):
         LOG.debug("restore_backup in rpcapi backup_id %s", backup_id)
         cctxt = self.client.prepare(server=host)
         cctxt.cast(ctxt, 'restore_backup', backup_id=backup_id,
-                   volume_id=volume_id)
+                   volume_id=volume_id,
+                   availavility_zone=availavility_zone,
+                   description=description)
 
     def delete_backup(self, ctxt, host, backup_id):
         LOG.debug("delete_backup  rpcapi backup_id %s", backup_id)
