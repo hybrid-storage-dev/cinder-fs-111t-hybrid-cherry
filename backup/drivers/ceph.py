@@ -1186,7 +1186,7 @@ class CephBackupDriver(BackupDriver):
         If volume metadata is available this will also be restored.
         """
         backup_des = backup.get('display_description', None)
-        if backup_des and backup_des.find('cross_az'):
+        if backup_des and backup_des.find('cross_az') == 0:
             self._ceph_restore_conf = strutils.safe_encode(CONF.restore_ceph_conf)
             self._ceph_restore_pool = strutils.safe_encode(CONF.restore_ceph_pool)
             self._ceph_backup_user = strutils.safe_encode(CONF.restore_ceph_user)

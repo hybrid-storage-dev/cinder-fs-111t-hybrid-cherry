@@ -376,7 +376,7 @@ class CephIscsiDriver(driver.ISCSIDriver):
     def backup_volume(self, context, backup, backup_service):
         """Create a new backup from an existing volume."""
         backup_des = backup.get('display_description', None)
-        if backup_des.find('cross_az'):
+        if backup_des.find('cross_az') == 0:
             return
         volume = self.db.volume_get(context, backup['volume_id'])
 
