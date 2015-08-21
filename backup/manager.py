@@ -301,7 +301,7 @@ class BackupManager(manager.SchedulerDependentManager):
                                                    self.az})
         LOG.info(_('Create backup finished. backup: %s.'), backup_id)
 
-    def restore_backup(self, context, backup_id, volume_id, availability_zone=None, description=None):
+    def restore_backup(self, context, backup_id, volume_id):
         """Restore volume backups from configured backup service."""
         LOG.info(_('Restore backup started, backup: %(backup_id)s '
                    'volume: %(volume_id)s.') %
@@ -313,6 +313,8 @@ class BackupManager(manager.SchedulerDependentManager):
         backend = self._get_volume_backend(host=volume_host)
 
         self.db.backup_update(context, backup_id, {'host': self.host})
+        LOG.info(_('Restore backup, backup_id:%s, description:%s') %
+                 (backup_id, backup['display_description']))
 
         expected_status = 'restoring-backup'
         actual_status = volume['status']

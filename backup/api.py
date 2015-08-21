@@ -202,7 +202,8 @@ class API(base.Base):
 
         return backup
 
-    def restore(self, context, backup_id, volume_id=None, availability_zone=None, description=None):
+    def restore(self, context, backup_id, volume_id=None,
+                availability_zone=None, description=None):
         """Make the RPC call to restore a volume backup."""
         check_policy(context, 'restore')
         backup = self.get(context, backup_id)
@@ -225,7 +226,9 @@ class API(base.Base):
                        "backup %(backup_id)s"),
                      {'size': size, 'backup_id': backup_id},
                      context=context)
-            volume = self.volume_api.create(context, size, name, description)
+            # TODO: specify the target volume's volume_type
+            volume = self.volume_api.create(context, size, name, description,
+                                            availability_zone=availability_zone)
             volume_id = volume['id']
 
             while True:
@@ -263,9 +266,7 @@ class API(base.Base):
         self.backup_rpcapi.restore_backup(context,
                                           volume_host,
                                           backup['id'],
-                                          volume_id,
-                                          availability_zone,
-                                          description)
+                                          volume_id)
 
         d = {'backup_id': backup_id,
              'volume_id': volume_id, }
