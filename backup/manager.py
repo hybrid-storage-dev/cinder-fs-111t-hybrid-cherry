@@ -313,6 +313,8 @@ class BackupManager(manager.SchedulerDependentManager):
         backend = self._get_volume_backend(host=volume_host)
 
         self.db.backup_update(context, backup_id, {'host': self.host})
+        LOG.info(_('Restore backup, backup_id:%s, description:%s') %
+                 (backup_id, backup['display_description']))
 
         expected_status = 'restoring-backup'
         actual_status = volume['status']
