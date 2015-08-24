@@ -259,10 +259,12 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                 backup_info = {'status':backup['status'],
                                'id':backup['id']}
                 self.backup_cache.append(backup_info)
-                
-            if backup['status'] == 'deleting':
+
+            # TODO: this won't work because under this context, you have
+            # no project id
+            '''if backup['status'] == 'deleting':
                 LOG.info(_('Resuming delete on backup: %s.') % backup['id'])
-                self.delete_backup(ctxt, backup['id'])
+                self.delete_backup(ctxt, backup['id'])'''
 
         self.init_flag = True
 
@@ -413,6 +415,13 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                      cascaded_snapshot_id)
         return cascaded_snapshot_id
 
+    def _clean_up_fake_resource(self, context,
+                                fake_backup_id,
+                                fake_source_volume_id):
+        cinderClient = self._get_cascaded_cinder_client(context)
+        cinderClient.backups.delete(fake_backup_id)
+        cinderClient.volumes.delete(fake_source_volume_id)
+
     def restore_backup(self, context, backup_id, volume_id):
         """Restore volume backups from configured backup service."""
         LOG.info(_('Restore backup started, backup: %(backup_id)s '
@@ -463,7 +472,9 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             LOG.info(_("backup az:(backup_az)%s, conf az:%(conf_az)s") %
                      {'backup_az': backup['availability_zone'],
                       'conf_az': availability_zone})
-            fake_description = "empty"
+            fake_description = ""
+            fake_source_volume_id = None
+            fake_backup_id = None
             if backup['availability_zone'] != availability_zone:
                 volumeResponse = cinderClient.volumes.create(
                     volume['size'],
@@ -473,6 +484,7 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                     project_id=context.project_id,
                     availability_zone=availability_zone,
                     metadata={'cross_az': ""})
+                fake_source_volume_id = volumeResponse._info['id']
                 time.sleep(30)
 
                 # retrieve cascaded backup id
@@ -497,15 +509,16 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                 # original source backup id and original source volume_id
                 fake_description = "cross_az:" + cascaded_source_backup_id + ":" + \
                                       cascaded_source_volume_id
-                bodyResponse = cinderClient.backups.create(
-                    volume_id=volumeResponse._info['id'],
+                backup_bodyResponse = cinderClient.backups.create(
+                    volume_id=fake_source_volume_id,
                     container=backup['container'],
                     name=backup['display_name'] + "-fake",
                     description=fake_description)
 
                 # set cascaded_backup_id as the faked one, which will help call
                 # into our volume driver's restore function
-                cascaded_backup_id = bodyResponse._info['id']
+                fake_backup_id = backup_bodyResponse._info['id']
+                cascaded_backup_id = backup_bodyResponse._info['id']
                 LOG.info(_("update cacaded_backup_id to created one:%s"),
                          cascaded_backup_id)
 
@@ -524,12 +537,20 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             while True:
                 time.sleep(CONF.volume_sync_interval)
                 queryResponse = \
-                    cinderClient.backups.get(bodyResponse._info['backup_id'])
+                    cinderClient.backups.get(cascaded_backup_id)
                 query_status = queryResponse._info['status']
                 if query_status != 'restoring':
                     self.db.volume_update(context, volume_id, {'status': 'available'})
                     self.db.backup_update(context, backup_id, {'status': query_status})
-                    break
+                    LOG.info(_("get backup:%(backup)s status:%(status)s" %
+                               {'backup': cascaded_backup_id,
+                                'status': query_status}))
+                    if fake_backup_id and fake_source_volume_id:
+                        LOG.info(_("cleanup fake backup:%(backup)s,"
+                                   "fake source volume id:%(volume)" %
+                                   {'backup': fake_backup_id,
+                                    'volume': fake_source_volume_id}))
+                        # TODO: check fake_source_volume_id status issue and clean it
                 else:
                     continue
         except Exception:

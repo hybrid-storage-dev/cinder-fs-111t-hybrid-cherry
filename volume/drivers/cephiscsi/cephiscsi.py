@@ -352,13 +352,13 @@ class CephIscsiDriver(driver.ISCSIDriver):
         stats = {
             'vendor_name': 'Open Source',
             'driver_version': self.VERSION,
-            'storage_protocol': 'cephiscsi',
+            'storage_protocol': 'iSCSI',
             'total_capacity_gb': 'unknown',
             'free_capacity_gb': 'unknown',
             'reserved_percentage': 0,
         }
         backend_name = self.configuration.safe_get('volume_backend_name')
-        stats['volume_backend_name'] = backend_name or 'RBDISCSI'
+        stats['volume_backend_name'] = backend_name
 
         try:
             with RADOSClient(self) as client:
@@ -393,10 +393,16 @@ class CephIscsiDriver(driver.ISCSIDriver):
     def restore_backup(self, context, backup, volume, backup_service):
         """Restore an existing backup to a new or existing volume."""
         backup_des = backup.get('display_description', None)
-        if backup_des and backup_des.find('cross_az'):
-            res = backup_des.split(backup_des, ':')
+        if backup_des and 'cross_az' in backup_des:
+            res = backup_des.split(':')
             backup['volume_id'] = res[-1]
             backup['id'] = res[-2]
+        LOG.info(_("ceph iscsi driver, got backup_id:%(backup_id)s,"
+                   "%(source_volume_id)s, backup_des:%(backup_des)s") %
+                 {'backup_id': backup['id'],
+                  'source_volume_id': backup['volume_id'],
+                  'backup_des': backup_des})
+
         with RBDVolumeProxy(self, volume['name'],
                             self.configuration.rbd_pool) as rbd_image:
             rbd_meta = RBDImageMetadata(rbd_image, self.configuration.rbd_pool,
