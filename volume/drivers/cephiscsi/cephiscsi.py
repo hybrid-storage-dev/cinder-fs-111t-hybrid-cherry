@@ -78,7 +78,7 @@ ceph_iscsi_opts = [
 CONF = cfg.CONF
 CONF.register_opts(rbd_opts)
 CONF.register_opts(ceph_iscsi_opts)
-
+IMAGE_SCAN_ATTEMPTS_DEFAULT = 5
 class RBDImageMetadata(object):
     """RBD image metadata to be used with RBDImageIOWrapper."""
     def __init__(self, image, pool, user, conf):
@@ -247,6 +247,7 @@ class CephIscsiDriver(driver.ISCSIDriver):
         self.rados = kwargs.get('rados', rados)
         self.rbd = kwargs.get('rbd', rbd)
         self._stats = {}
+        self.image_scan_attempts = IMAGE_SCAN_ATTEMPTS_DEFAULT
         for attr in ['rbd_user', 'rbd_ceph_conf', 'rbd_pool']:
             val = getattr(self.configuration, attr)
             if val is not None:
@@ -446,15 +447,19 @@ class CephIscsiDriver(driver.ISCSIDriver):
                                   order,
                                   old_format=old_format,
                                   features=features)
-        command = "ssh -i %s %s@%s sudo bash /home/%s/ceph_iscsi.sh %s %s %s" % \
-                  (self.configuration.iscsi_server_pem,
-                   self.configuration.iscsi_server_user,
-                   self.configuration.iscsi_server_ip,
-                   self.configuration.iscsi_server_user,
-                   'create', self.configuration.rbd_pool, volume['name'])
-        result = subprocess.call([command], shell=True)
-        if result != 0:
-            LOG.debug("creating iscsi target failed '%s'" % (volume['id']))
+        if self.image_found(volume['name']):
+            command = "ssh -i %s %s@%s sudo bash /home/%s/ceph_iscsi.sh %s %s %s" % \
+                      (self.configuration.iscsi_server_pem,
+                       self.configuration.iscsi_server_user,
+                       self.configuration.iscsi_server_ip,
+                       self.configuration.iscsi_server_user,
+                       'create', self.configuration.rbd_pool, volume['name'])
+            result = subprocess.call([command], shell=True)
+            if result != 0:
+                LOG.debug("create iscsi target failed '%s'" % (volume['id']))
+        else:
+            LOG.debug("can not find rbd image,create failed")
+
     def create_volume_from_snapshot(self, volume, snapshot):
         """Create a volume from a snapshot."""
         pass
@@ -558,6 +563,17 @@ class CephIscsiDriver(driver.ISCSIDriver):
         """Get volume stats."""
         self._update_volume_stats()
         return self._stats
+
+    def image_found(self, image_name):
+        try_count = 0
+        while try_count < self.image_scan_attempts:
+            image_list = self.rbd.RBD().list(RADOSClient(self).ioctx)
+            for image in image_list:
+                if image == image_name:
+                    return True
+            try_count = try_count + 1
+            time.sleep(try_count ** 2)
+        return False
 
     def initialize_connection(self, volume, connector):
         """Map a volume to a host."""
