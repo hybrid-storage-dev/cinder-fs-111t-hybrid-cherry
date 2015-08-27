@@ -546,11 +546,12 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                                {'backup': cascaded_backup_id,
                                 'status': query_status}))
                     if fake_backup_id and fake_source_volume_id:
-                        LOG.info(_("cleanup fake backup:%(backup)s,"
-                                   "fake source volume id:%(volume)" %
-                                   {'backup': fake_backup_id,
-                                    'volume': fake_source_volume_id}))
+                        '''LOG.info(_("cleanup fake backup:%(backup)s,"
+                                   "fake source volume id:%(volume)") %
+                                 {'backup': fake_backup_id,
+                                  'volume': fake_source_volume_id})'''
                         # TODO: check fake_source_volume_id status issue and clean it
+                        pass
                 else:
                     continue
         except Exception:
