@@ -353,13 +353,13 @@ class CephIscsiDriver(driver.ISCSIDriver):
         stats = {
             'vendor_name': 'Open Source',
             'driver_version': self.VERSION,
-            'storage_protocol': 'iSCSI',
+            'storage_protocol': 'cephiscsi',
             'total_capacity_gb': 'unknown',
             'free_capacity_gb': 'unknown',
             'reserved_percentage': 0,
         }
         backend_name = self.configuration.safe_get('volume_backend_name')
-        stats['volume_backend_name'] = backend_name
+        stats['volume_backend_name'] = backend_name or 'RBDISCSI'
 
         try:
             with RADOSClient(self) as client:
@@ -377,7 +377,7 @@ class CephIscsiDriver(driver.ISCSIDriver):
     def backup_volume(self, context, backup, backup_service):
         """Create a new backup from an existing volume."""
         backup_des = backup.get('display_description', None)
-        if backup_des.find('cross_az') >= 0:
+        if backup_des and backup_des.find('cross_az') >= 0:
             return
         volume = self.db.volume_get(context, backup['volume_id'])
 
@@ -403,7 +403,6 @@ class CephIscsiDriver(driver.ISCSIDriver):
                  {'backup_id': backup['id'],
                   'source_volume_id': backup['volume_id'],
                   'backup_des': backup_des})
-
         with RBDVolumeProxy(self, volume['name'],
                             self.configuration.rbd_pool) as rbd_image:
             rbd_meta = RBDImageMetadata(rbd_image, self.configuration.rbd_pool,
@@ -413,6 +412,7 @@ class CephIscsiDriver(driver.ISCSIDriver):
             backup_service.restore(backup, volume['id'], rbd_fd)
 
         LOG.debug("volume restore complete.")
+
     def do_setup(self, context):
         """Instantiate common class and log in storage system."""
         pass
@@ -588,6 +588,7 @@ class CephIscsiDriver(driver.ISCSIDriver):
         properties['target_discovered'] = False
         properties['target_portal'] = ('%s:%s' % (self.configuration.iscsi_server_ip, '3260'))
         properties['target_iqn'] = 'iqn.2015-08.rbdstore.' + volume['name'] + '.com:iscsi'
+        properties['target_lun'] = 1
         properties['volume_id'] = volume['id']
 
         LOG.info("initialize_connection_iscsi success. Return data: %s."
