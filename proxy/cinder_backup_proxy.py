@@ -415,10 +415,9 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                      cascaded_snapshot_id)
         return cascaded_snapshot_id
 
-    def _clean_up_fake_resource(self, context,
+    def _clean_up_fake_resource(self, cinderClient,
                                 fake_backup_id,
                                 fake_source_volume_id):
-        cinderClient = self._get_cascaded_cinder_client(context)
         cinderClient.backups.delete(fake_backup_id)
         cinderClient.volumes.delete(fake_source_volume_id)
 
@@ -476,6 +475,13 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             fake_source_volume_id = None
             fake_backup_id = None
             if backup['availability_zone'] != availability_zone:
+                cascading_volume_type = self.db.volume_type_get(
+                    context, volume['volume_type_id'])
+                cascading_volume_type_name = cascading_volume_type['name']
+                names = cascading_volume_type_name.split('@')
+                cascaded_volume_type_name = names[0] + '@' + availability_zone
+                LOG.info(_("cascaded vol type:%(cascaded_volume_type_name)s") %
+                         {'cascaded_volume_type_name': cascaded_volume_type_name})
                 volumeResponse = cinderClient.volumes.create(
                     volume['size'],
                     name=volume['display_name'] + "-fake",
@@ -483,7 +489,8 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                     user_id=context.user_id,
                     project_id=context.project_id,
                     availability_zone=availability_zone,
-                    metadata={'cross_az': ""})
+                    volume_type=cascaded_volume_type_name,
+                    metadata={'cross_az': "yes"})
                 fake_source_volume_id = volumeResponse._info['id']
                 time.sleep(30)
 
@@ -546,12 +553,13 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                                {'backup': cascaded_backup_id,
                                 'status': query_status}))
                     if fake_backup_id and fake_source_volume_id:
-                        '''LOG.info(_("cleanup fake backup:%(backup)s,"
-                                   "fake source volume id:%(volume)") %
+                        LOG.info(_("cleanup fake backup:%(backup)s,"
+                                   "fake source volume id:%(volume)s") %
                                  {'backup': fake_backup_id,
-                                  'volume': fake_source_volume_id})'''
-                        # TODO: check fake_source_volume_id status issue and clean it
-                        pass
+                                  'volume': fake_source_volume_id})
+                        '''cinderClient.backups.delete(fake_backup_id)
+                        cinderClient.volumes.delete(fake_source_volume_id)'''
+                    break
                 else:
                     continue
         except Exception:
