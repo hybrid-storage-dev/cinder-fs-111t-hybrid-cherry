@@ -609,3 +609,8 @@ class CephIscsiDriver(driver.ISCSIDriver):
     def remove_export(self, context, volume):
         """Remove an export for a volume."""
         pass
+
+    def validate_connector(self, connector):
+        """Fail if connector doesn't contain all the data needed by driver."""
+        LOG.debug('Cephiscsi Driver: validate_connector')
+        pass
