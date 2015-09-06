@@ -485,6 +485,16 @@ class CephIscsiDriver(driver.ISCSIDriver):
         #                utf-8 otherwise librbd will barf.
         if 'fake_flag' == volume.get('provider_location', None):
             return
+        command = "ssh -i %s %s@%s sudo bash /home/%s/ceph_iscsi.sh %s %s %s" % \
+                  (self.configuration.iscsi_server_pem,
+                   self.configuration.iscsi_server_user,
+                   self.configuration.iscsi_server_ip,
+                   self.configuration.iscsi_server_user,
+                   'delete', self.configuration.rbd_pool, volume['name'])
+        result = subprocess.call([command], shell=True)
+        if result != 0:
+            LOG.debug("delete iscsi target failed '%s'" % (volume['id']))
+        time.sleep(30)
         volume_name = strutils.safe_encode(volume['name'])
         with RADOSClient(self) as client:
             try:
@@ -547,15 +557,6 @@ class CephIscsiDriver(driver.ISCSIDriver):
                 # will be deleted when it's snapshot and clones are deleted.
                 new_name = "%s.deleted" % (volume_name)
                 self.rbd.RBD().rename(client.ioctx, volume_name, new_name)
-        command = "ssh -i %s %s@%s sudo bash /home/%s/ceph_iscsi.sh %s %s %s" % \
-                  (self.configuration.iscsi_server_pem,
-                   self.configuration.iscsi_server_user,
-                   self.configuration.iscsi_server_ip,
-                   self.configuration.iscsi_server_user,
-                   'delete', self.configuration.rbd_pool, volume['name'])
-        result = subprocess.call([command], shell=True)
-        if result != 0:
-            LOG.debug("delete iscsi target failed '%s'" % (volume['id']))
 
     def create_snapshot(self, snapshot):
         """Create a snapshot."""
