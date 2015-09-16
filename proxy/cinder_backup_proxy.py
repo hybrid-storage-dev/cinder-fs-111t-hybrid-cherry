@@ -559,6 +559,13 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                                   'volume': fake_source_volume_id})
                         cinderClient.backups.delete(fake_backup_id)
                         cinderClient.volumes.delete(fake_source_volume_id)
+
+                    # TODO: note, this is a walkaround since target cced volume will be
+                    # TODO: changed with its logicalVolumeId to source ccing volume id
+                    # TODO: and thus may fail to flush status to correct ccing volume
+                    time.sleep(CONF.volume_sync_interval)
+                    self.db.volume_update(context, volume_id, {'status': 'available'})
+                    self.db.backup_update(context, backup_id, {'status': query_status})
                     break
                 else:
                     continue
