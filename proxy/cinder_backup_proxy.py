@@ -475,8 +475,8 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             fake_source_volume_id = None
             fake_backup_id = None
 
-            # retrieve cascaded backup id
             cascaded_backup_id = None
+            # retrieve cascaded backup id
             md_set = backup['service_metadata'].split(';')
             if len(md_set) > 1 and 'mapping_uuid' in md_set[0]:
                 mapping_set = md_set[0].split(':')
