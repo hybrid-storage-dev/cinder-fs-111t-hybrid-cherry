@@ -966,7 +966,7 @@ class CephBackupDriver(BackupDriver):
         shrink it to the size of the original backup so we need to
         post-process and resize it back to its expected size.
         """
-        with rbd_driver.RADOSClient(self, self._ceph_backup_pool) as client:
+        with RADOSClient(self, self._ceph_restore_pool) as client:
             adjust_size = 0
             base_image = self.rbd.Image(client.ioctx,
                                         strutils.safe_encode(backup_base),
@@ -978,7 +978,7 @@ class CephBackupDriver(BackupDriver):
                 base_image.close()
 
         if adjust_size:
-            with rbd_driver.RADOSClient(self, src_pool) as client:
+            with RADOSClient(self, src_pool) as client:
                 dest_image = self.rbd.Image(client.ioctx,
                                             strutils.safe_encode(restore_vol))
                 try:
@@ -1042,7 +1042,7 @@ class CephBackupDriver(BackupDriver):
         base has no snapshots/restore points), None is returned. Otherwise, the
         restore point associated with backup_id is returned.
         """
-        with rbd_driver.RADOSClient(self, self._ceph_backup_pool) as client:
+        with RADOSClient(self, self._ceph_restore_pool) as client:
             base_rbd = self.rbd.Image(client.ioctx, base_name, read_only=True)
             try:
                 restore_point = self._get_backup_snap_name(base_rbd, base_name,
@@ -1189,7 +1189,7 @@ class CephBackupDriver(BackupDriver):
         if backup_des and backup_des.find('cross_az') >= 0:
             self._ceph_restore_conf = strutils.safe_encode(CONF.restore_ceph_conf)
             self._ceph_restore_pool = strutils.safe_encode(CONF.restore_ceph_pool)
-            self._ceph_backup_user = strutils.safe_encode(CONF.restore_ceph_user)
+            self._ceph_restore_user = strutils.safe_encode(CONF.restore_ceph_user)
         else:
             self._ceph_restore_conf = self._ceph_backup_conf
             self._ceph_restore_pool = self._ceph_backup_pool
