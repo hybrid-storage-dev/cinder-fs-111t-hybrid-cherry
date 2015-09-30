@@ -557,8 +557,8 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                                    "fake source volume id:%(volume)s") %
                                  {'backup': fake_backup_id,
                                   'volume': fake_source_volume_id})
-                        '''cinderClient.backups.delete(fake_backup_id)
-                        cinderClient.volumes.delete(fake_source_volume_id)'''
+                        cinderClient.backups.delete(fake_backup_id)
+                        cinderClient.volumes.delete(fake_source_volume_id)
                     break
                 else:
                     continue
