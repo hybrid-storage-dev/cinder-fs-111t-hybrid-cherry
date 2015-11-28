@@ -71,7 +71,8 @@ class ViewBuilder(common.ViewBuilder):
                 'encrypted': self._is_volume_encrypted(volume),
                 'replication_status': volume.get('replication_status'),
                 'consistencygroup_id': volume.get('consistencygroup_id'),
-                'shareable': str(volume.get('shareable')).lower()
+                'shareable': str(volume.get('shareable')).lower(),
+                'updated_at': volume.get('updated_at')
             }
         }
 

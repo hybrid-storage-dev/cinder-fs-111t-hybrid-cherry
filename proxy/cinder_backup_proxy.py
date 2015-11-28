@@ -474,8 +474,8 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
             fake_description = ""
             fake_source_volume_id = None
             fake_backup_id = None
-
             cascaded_backup_id = None
+
             # retrieve cascaded backup id
             md_set = backup['service_metadata'].split(';')
             if len(md_set) > 1 and 'mapping_uuid' in md_set[0]:
@@ -530,50 +530,46 @@ class CinderBackupProxy(manager.SchedulerDependentManager):
                 LOG.info(_("update cacaded_backup_id to created one:%s"),
                          cascaded_backup_id)
 
-                LOG.info(_("restore, cascaded_backup_id:%(cascaded_backup_id)s, "
+            LOG.info(_("restore, cascaded_backup_id:%(cascaded_backup_id)s, "
                        "cascaded_volume_id:%(cascaded_volume_id)s, "
                        "description:%(description)s") %
                      {'cascaded_backup_id': cascaded_backup_id,
                      'cascaded_volume_id': cascaded_volume_id,
                      'description': fake_description})
 
-                bodyResponse = cinderClient.restores.restore(
-                    backup_id=cascaded_backup_id,
-                    volume_id=cascaded_volume_id)
-                LOG.info(_("cascade info: restore backup  while response is:%s"),
-                        bodyResponse._info)
-                while True:
-                    time.sleep(CONF.volume_sync_interval)
-                    queryResponse = \
-                        cinderClient.backups.get(cascaded_backup_id)
-                    query_status = queryResponse._info['status']
-                    if query_status != 'restoring':
-                        self.db.volume_update(context, volume_id, {'status': 'available'})
-                        self.db.backup_update(context, backup_id, {'status': query_status})
-                        LOG.info(_("get backup:%(backup)s status:%(status)s" %
+            bodyResponse = cinderClient.restores.restore(
+                backup_id=cascaded_backup_id,
+                volume_id=cascaded_volume_id)
+            LOG.info(_("cascade info: restore backup  while response is:%s"),
+                     bodyResponse._info)
+            while True:
+                time.sleep(CONF.volume_sync_interval)
+                queryResponse = \
+                    cinderClient.backups.get(cascaded_backup_id)
+                query_status = queryResponse._info['status']
+                if query_status != 'restoring':
+                    self.db.volume_update(context, volume_id, {'status': 'available'})
+                    self.db.backup_update(context, backup_id, {'status': query_status})
+                    LOG.info(_("get backup:%(backup)s status:%(status)s" %
                                {'backup': cascaded_backup_id,
                                 'status': query_status}))
-                        if fake_backup_id and fake_source_volume_id:
-                            LOG.info(_("cleanup fake backup:%(backup)s,"
+                    if fake_backup_id and fake_source_volume_id:
+                        LOG.info(_("cleanup fake backup:%(backup)s,"
                                    "fake source volume id:%(volume)s") %
                                  {'backup': fake_backup_id,
                                   'volume': fake_source_volume_id})
-                            cinderClient.backups.delete(fake_backup_id)
-                            cinderClient.volumes.delete(fake_source_volume_id)
+                        cinderClient.backups.delete(fake_backup_id)
+                        cinderClient.volumes.delete(fake_source_volume_id)
 
-                        # TODO: note, this is a walkaround since target cced volume will be
-                        # TODO: changed with its logicalVolumeId to source ccing volume id
-                        # TODO: and thus may fail to flush status to correct ccing volume
-                        time.sleep(CONF.volume_sync_interval)
-                        self.db.volume_update(context, volume_id, {'status': 'available'})
-                        self.db.backup_update(context, backup_id, {'status': query_status})
-                        break
-                    else:
-                        continue
-            else:
-                 bodyResponse = cinderClient.restores.restore(
-                    backup_id=cascaded_backup_id,
-                    volume_id=cascaded_volume_id)
+                    # TODO: note, this is a walkaround since target cced volume will be
+                    # TODO: changed with its logicalVolumeId to source ccing volume id
+                    # TODO: and thus may fail to flush status to correct ccing volume
+                    time.sleep(CONF.volume_sync_interval)
+                    self.db.volume_update(context, volume_id, {'status': 'available'})
+                    self.db.backup_update(context, backup_id, {'status': query_status})
+                    break
+                else:
+                    continue
         except Exception:
             with excutils.save_and_reraise_exception():
                 self.db.volume_update(context, volume_id,

@@ -225,6 +225,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             datetime.timedelta(seconds=self.TIME_SHIFT_TOLERANCE)
         self._change_since_time = timeutils.isotime(_change_since_time)
         self.volumes_mapping_cache = {'volumes': {}, 'snapshots': {}}
+        self.cascaded_mapping_cache = {'volumes':{},'snapshots':{}}
+
         self.volume_type_cache = []
         self.sync_volumes = []
         self.tg = threadgroup.ThreadGroup()
@@ -275,6 +277,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                     mapping_uuid = meta.get('mapping_uuid', None)
                     if mapping_uuid:
                         self.volumes_mapping_cache['volumes'][v_id] = mapping_uuid
+                        self.cascaded_mapping_cache['volumes'][mapping_uuid] = v_id
+
             except Exception as ec:
                 LOG.error("try get db volumes and init volume cache error: %s, %s" %
                           (str(ec), traceback.format_exc()))
@@ -395,6 +399,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                                       (str(ine), traceback.format_exc()))
                         else:
                             self.volumes_mapping_cache['volumes'][cascading_id] = mapping_uuid
+                            self.cascaded_mapping_cache['volumes'][mapping_uuid] = cascading_id
+
                 except Exception as ie:
                     LOG.error("during update volume status, inner occur error: %s, %s" %
                               (str(ie), traceback.format_exc()))
@@ -454,6 +460,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                                 continue
                             else:
                                 self.volumes_mapping_cache['volumes'][cascading_id] = mapping_uuid
+                                self.cascaded_mapping_cache['volumes'][mapping_uuid] = cascading_id
+
                     except Exception as ie:
                         LOG.error("during update volume status, inner occur error: %s, %s" %
                                   (str(ie), traceback.format_exc()))
@@ -581,7 +589,7 @@ class CinderProxy(manager.SchedulerDependentManager):
                         metadata = mapping_volume._info['metadata']
                         self._update_volume_metada(context, volume_id, metadata)
                     else:
-                        self.db.volume_update(context, volume_id, {'status': status})
+                        self.db.volume_update(context, volume_id, {'status': mapping_status})
                     continue
             except cinder_exception.Unauthorized as ex:
                 LOG.info('_sync_volume_status: Unauthorized %s', str(ex))
@@ -610,6 +618,12 @@ class CinderProxy(manager.SchedulerDependentManager):
             return csd_name[-uuid_len:]
         try:
             return volume._info['metadata']['logicalVolumeId']
+        except KeyError:
+            return ''
+
+    def _get_ccding_volume_id_v2(self, volume):
+        try:
+            return self.cascaded_mapping_cache['volumes'][volume._info['id']]
         except KeyError:
             return ''
 
@@ -933,6 +947,8 @@ class CinderProxy(manager.SchedulerDependentManager):
             if bodyResponse._info['status'] == 'creating':
                 self.volumes_mapping_cache['volumes'][volume_id] = \
                     bodyResponse._info['id']
+                self.cascaded_mapping_cache['volumes'][bodyResponse._info['id']] = volume_id
+
                 if 'logicalVolumeId' in metadata:
                     metadata.pop('logicalVolumeId')
                 metadata['mapping_uuid'] = bodyResponse._info['id']
@@ -1012,8 +1028,8 @@ class CinderProxy(manager.SchedulerDependentManager):
 
     def _check_update_volume(self, context, refresh_vol):
         '''check refresh volumes before update'''
-
-        volume_id = self._get_ccding_volume_id(refresh_vol)
+        #volume_id = self._get_ccding_volume_id(refresh_vol)
+        volume_id = self._get_ccding_volume_id_v2(refresh_vol)
         if volume_id is None:
             LOG.error(_("cascade info: logicalVolumeId for %s is None !"),
                       volume_id)
@@ -1050,6 +1066,8 @@ class CinderProxy(manager.SchedulerDependentManager):
         return True
 
     def _update_volumes(self, context, volumes):
+        # LOG.info("volumes_mapping_cache:%s"%self.volumes_mapping_cache['volumes'])
+        # LOG.info("cascaded_mapping_cache:%s"%self.cascaded_mapping_cache['volumes'])
         for volume in volumes:
             LOG.debug(_("cascade ino: update volume:%s"), str(volume._info))
             try:
@@ -1062,7 +1080,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                                  ccded_vol)
                     continue
 
-                volume_id = self._get_ccding_volume_id(volume)
+                # volume_id = self._get_ccding_volume_id(volume)
+                volume_id = self._get_ccding_volume_id_v2(volume)
                 volume_status = volume._info['status']
                 new_volume_type_id = None
                 volume_type_name = volume._info['volume_type']
@@ -1073,7 +1092,18 @@ class CinderProxy(manager.SchedulerDependentManager):
                 
                 cascading_volume = self.db.volume_get(context, volume_id)
                 cascading_status = cascading_volume.get('status')
-                
+
+                ccding_vol_metadata = self.db.volume_metadata_get(context, volume_id)
+                # LOG.info("ccding_vol_metadata:%s"%ccding_vol_metadata)
+                if ccding_vol_metadata.has_key('cascaed_updated_at') == False:
+                    updated_metadata = {'cascaed_updated_at': volume._info['updated_at']}
+                    self._update_volume_metada(context, volume_id, updated_metadata)
+                else:
+                    cascading_updated_at = timeutils.isotime(timeutils.parse_strtime(ccding_vol_metadata['cascaed_updated_at']))
+                    cascaded_updated_at = timeutils.isotime(timeutils.parse_isotime(volume._info['updated_at']))
+                    if cascading_updated_at >= cascaded_updated_at:
+                        continue
+
                 if 'attaching' == cascading_status or \
                     'detaching' == cascading_status or \
                     'in-use' == cascading_status:
@@ -1085,7 +1115,10 @@ class CinderProxy(manager.SchedulerDependentManager):
                     'in-use' == volume_status:
                     LOG.info(_("cascade info: %s cascading_status[%s] volume_status[%s]"), volume_id, cascading_status, volume_status)
                     continue
-                
+
+                updated_metadata = {'cascaed_updated_at': volume._info['updated_at']}
+                self._update_volume_metada(context, volume_id, updated_metadata)
+
                 if volume_status == "available":
                     
                     if (cascading_status == "downloading" or cascading_status == "creating") and \
@@ -1437,6 +1470,8 @@ class CinderProxy(manager.SchedulerDependentManager):
                     raise exception.CinderException(msg)
                     
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
+            self.cascaded_mapping_cache['volumes'].pop(cascaded_volume_id, '')
+
             LOG.info(_('cascade ino: finished to delete cascade volume %s'),
                      cascaded_volume_id)
             self.report_vol_resouce_toMonitoring(context, "remove",
@@ -1445,6 +1480,7 @@ class CinderProxy(manager.SchedulerDependentManager):
             return
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
+            self.cascaded_mapping_cache['volumes'].pop(cascaded_volume_id, '')
 
             LOG.info(_('cascade ino: finished to delete cascade volume %s'),
                      cascaded_volume_id)
@@ -2219,6 +2255,7 @@ class CinderProxy(manager.SchedulerDependentManager):
         
         if rsp._info['status'] == 'creating':
             self.volumes_mapping_cache['volumes'][volume_id] = rsp._info['id']
+            self.cascaded_mapping_cache['volumes'][rsp._info['id']] = volume_id
             self.db.volume_update(ctxt, volume_id, {'status': 'creating'})
             
             metadata = {'mapping_uuid': rsp._info['id']}
@@ -2233,10 +2270,12 @@ class CinderProxy(manager.SchedulerDependentManager):
             cinderClient.volumes.get(cascaded_volume_id)
             cinderClient.volumes.unmanage(volume=cascaded_volume_id)
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
+            self.cascaded_mapping_cache['volumes'].pop(cascaded_volume_id, '')
             LOG.info(_('finished to _unmanage cascade volume %s'), cascaded_volume_id)
             return
         except cinder_exception.NotFound:
             self.volumes_mapping_cache['volumes'].pop(volume_id, '')
+            self.cascaded_mapping_cache['volumes'].pop(cascaded_volume_id, '')
 
             LOG.info(_('ummanage cascade volume %s not found'), cascaded_volume_id)
             return
